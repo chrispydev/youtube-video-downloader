@@ -1,22 +1,25 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, WebSocket, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from yt_dlp import YoutubeDL
-import os
 import uuid
-from fastapi.middleware.cors import CORSMiddleware
+import os
+import asyncio
 
 app = FastAPI()
 
+# ---------- CORS ----------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # replace "*" with your frontend URL in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+# ---------- Request Models ----------
 class VideoRequest(BaseModel):
     url: str
 
@@ -26,6 +29,7 @@ class DownloadRequest(BaseModel):
     format_id: str
 
 
+# ---------- Info Endpoint ----------
 @app.post("/info")
 async def get_video_info(data: VideoRequest):
     url = data.url
@@ -62,26 +66,47 @@ async def get_video_info(data: VideoRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.post("/download")
-async def download_video(req: DownloadRequest):
-    url = req.url
-    format_id = req.format_id
-
-    # temporary unique filename
-    output_filename = f"downloads/{uuid.uuid4()}.mp4"
-    os.makedirs("downloads", exist_ok=True)
-
-    ydl_opts = {
-        "outtmpl": output_filename,
-        "format": format_id,
-        "merge_output_format": "mp4",
-    }
-
+# ---------- WebSocket Download Endpoint ----------
+@app.websocket("/ws/download")
+async def websocket_download(websocket: WebSocket):
+    await websocket.accept()
     try:
+        data = await websocket.receive_json()
+        url = data.get("url")
+        format_id = data.get("format_id")
+
+        if not url or not format_id:
+            await websocket.send_json({"error": "url and format_id are required"})
+            await websocket.close()
+            return
+
+        # Ensure downloads folder exists
+        os.makedirs("downloads", exist_ok=True)
+        output_file = f"downloads/{uuid.uuid4()}.mp4"
+
+        # Progress hook for yt-dlp
+        def progress_hook(d):
+            if d["status"] == "downloading":
+                percent = d.get("_percent_str", "0.0%")
+                asyncio.create_task(websocket.send_json({"progress": percent}))
+            elif d["status"] == "finished":
+                asyncio.create_task(
+                    websocket.send_json({"progress": "100%", "finished": True})
+                )
+
+        ydl_opts = {
+            "format": format_id,
+            "outtmpl": output_file,
+            "merge_output_format": "mp4",
+            "progress_hooks": [progress_hook],
+        }
+
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        return FileResponse(output_filename, filename="video.mp4")
+        await websocket.send_json({"file": output_file})
+        await websocket.close()
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        await websocket.send_json({"error": str(e)})
+        await websocket.close()

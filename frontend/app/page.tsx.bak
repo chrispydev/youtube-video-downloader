@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 
 interface Format {
   format_id: string;
@@ -17,24 +17,22 @@ interface DownloadHistoryItem {
 }
 
 export default function Home() {
-  const [url, setUrl] = useState<string>("");
-  const [loadingInfo, setLoadingInfo] = useState<boolean>(false);
+  const [url, setUrl] = useState("");
+  const [loadingInfo, setLoadingInfo] = useState(false);
   const [info, setInfo] = useState<any>(null);
   const [selectedFormat, setSelectedFormat] = useState<string>("");
-  const [downloading, setDownloading] = useState<boolean>(false);
-  const [progress, setProgress] = useState<string>("0.0%");
+  const [downloading, setDownloading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [history, setHistory] = useState<DownloadHistoryItem[]>([]);
 
-  const wsRef = useRef<WebSocket | null>(null);
-
-  // Fetch video info from backend
+  // Fetch video info
   const fetchInfo = async () => {
     if (!url) return;
     setLoadingInfo(true);
     setInfo(null);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/info", {
+      const res = await fetch("http://localhost:8000/info", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
@@ -45,67 +43,64 @@ export default function Home() {
       console.error(err);
       alert("Failed to fetch video info.");
     }
-
     setLoadingInfo(false);
   };
 
-  // Start WebSocket download
-  const startDownload = () => {
-    if (!info || !selectedFormat) {
-      alert("Please select a quality and fetch video info first");
+  // Download video with progress
+  const download = async () => {
+    if (!selectedFormat) {
+      alert("Select a quality");
       return;
     }
 
     setDownloading(true);
-    setProgress("0.0%");
+    setProgress(0);
 
-    // Create WebSocket
-    wsRef.current = new WebSocket("ws://127.0.0.1:8000/ws/download");
+    try {
+      const res = await fetch("http://localhost:8000/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, format_id: selectedFormat }),
+      });
 
-    wsRef.current.onopen = (_event: Event) => {
-      wsRef.current?.send(JSON.stringify({ url, format_id: selectedFormat }));
-    };
+      const reader = res.body?.getReader();
+      const contentLength = res.headers.get("Content-Length");
+      const total = contentLength ? parseInt(contentLength) : 0;
+      let received = 0;
+      const chunks: Uint8Array[] = [];
 
-    wsRef.current.onmessage = (event: MessageEvent) => {
-      const data = JSON.parse(event.data);
-
-      if (data.progress) setProgress(data.progress);
-
-      if (data.finished) {
-        setDownloading(false);
-        // Add to history
-        setHistory((prev) => [
-          ...prev,
-          { title: info.title, format: selectedFormat, url },
-        ]);
-
-        // Trigger download via File API
-        fetch(`http://127.0.0.1:8000/download_file?file=${encodeURIComponent(data.file)}`)
-          .then((res) => res.blob())
-          .then((blob) => {
-            const blobUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = blobUrl;
-            a.download = "video.mp4";
-            a.click();
-          })
-          .catch((err) => console.error("Failed to download file:", err));
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            received += value.length;
+            if (total) setProgress(Math.floor((received / total) * 100));
+          }
+        }
       }
 
-      if (data.error) {
-        alert("Download error: " + data.error);
-        setDownloading(false);
-      }
-    };
+      // Convert chunks to blob
+      const blob = new Blob(chunks);
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = "video.mp4";
+      a.click();
 
-    wsRef.current.onerror = (_event: Event) => {
-      console.error("WebSocket error");
-      setDownloading(false);
-    };
+      // Update history
+      setHistory([
+        ...history,
+        { title: info.title, format: selectedFormat, url },
+      ]);
+    } catch (err) {
+      console.error(err);
+      alert("Download failed.");
+    }
 
-    wsRef.current.onclose = (_event: CloseEvent) => {
-      setDownloading(false);
-    };
+    setDownloading(false);
+    setProgress(0);
   };
 
   return (
@@ -170,20 +165,19 @@ export default function Home() {
             </select>
 
             <button
-              onClick={startDownload}
+              onClick={download}
               disabled={downloading}
               className={`w-full ${downloading ? "bg-gray-500 cursor-not-allowed" : "bg-green-500 hover:bg-green-600"
                 } text-white font-semibold py-3 rounded-lg shadow-md transition transform hover:-translate-y-1 hover:scale-105`}
             >
-              {downloading ? `Downloading ${progress}` : "Download"}
+              {downloading ? `Downloading ${progress}%` : "Download"}
             </button>
 
-            {/* Progress Bar */}
             {downloading && (
               <div className="w-full bg-white/30 rounded-full h-3 mt-3 overflow-hidden">
                 <div
-                  className="bg-green-400 h-3 transition-all"
-                  style={{ width: progress }}
+                  className="bg-green-400 h-3"
+                  style={{ width: `${progress}%` }}
                 ></div>
               </div>
             )}
