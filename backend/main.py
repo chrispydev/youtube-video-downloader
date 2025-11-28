@@ -1,66 +1,78 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from yt_dlp import YoutubeDL
 import os
+import uuid
+
+app = FastAPI()
 
 
-def get_video_info(url):
-    ydl_opts = {"quiet": True}
-    with YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-
-    # Get thumbnail
-    thumbnail = info.get("thumbnail")
-
-    # Get title
-    title = info.get("title")
-
-    # Get available formats (video+audio)
-    formats = []
-    for f in info["formats"]:
-        if f.get("ext") == "mp4":
-            formats.append(
-                {
-                    "format_id": f["format_id"],
-                    "quality": f.get("quality_label"),
-                    "fps": f.get("fps"),
-                    "filesize": f.get("filesize"),
-                }
-            )
-
-    return title, thumbnail, formats
+class VideoRequest(BaseModel):
+    url: str
 
 
-def download_video(url, format_id, output_path):
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+class DownloadRequest(BaseModel):
+    url: str
+    format_id: str
+
+
+@app.post("/info")
+async def get_video_info(data: VideoRequest):
+    url = data.url
 
     ydl_opts = {
-        "outtmpl": output_path,
-        "format": format_id,  # download selected format
+        "quiet": True,
+        "skip_download": True,
+    }
+
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+
+        return {
+            "title": info.get("title"),
+            "thumbnail": info.get("thumbnail"),
+            "duration": info.get("duration"),
+            "uploader": info.get("uploader"),
+            "description": info.get("description"),
+            "formats": [
+                {
+                    "format_id": f.get("format_id"),
+                    "ext": f.get("ext"),
+                    "resolution": f.get("resolution"),
+                    "filesize": f.get("filesize"),
+                    "format_note": f.get("format_note"),
+                }
+                for f in info.get("formats", [])
+                if f.get("format_id")
+            ],
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/download")
+async def download_video(req: DownloadRequest):
+    url = req.url
+    format_id = req.format_id
+
+    # temporary unique filename
+    output_filename = f"downloads/{uuid.uuid4()}.mp4"
+    os.makedirs("downloads", exist_ok=True)
+
+    ydl_opts = {
+        "outtmpl": output_filename,
+        "format": format_id,
         "merge_output_format": "mp4",
     }
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-        print(f"Video downloaded to {output_path}")
+
+        return FileResponse(output_filename, filename="video.mp4")
+
     except Exception as e:
-        print(f"Download failed: {e}")
-
-
-if __name__ == "__main__":
-    video_url = input("Enter the YouTube video URL: ")
-
-    title, thumbnail, formats = get_video_info(video_url)
-    print(f"\nTitle: {title}")
-    print(f"Thumbnail URL: {thumbnail}\n")
-
-    print("Available formats:")
-    for f in formats:
-        print(
-            f"Format ID: {f['format_id']}, Quality: {f['quality']}, FPS: {f.get('fps', 'N/A')}, Size: {f.get('filesize', 'N/A')}"
-        )
-
-    selected_format = input("\nEnter the format ID you want to download: ")
-    output_file = input("Enter the output file path (e.g., ./video.mp4): ")
-
-    download_video(video_url, selected_format, output_file)
+        raise HTTPException(status_code=400, detail=str(e))
