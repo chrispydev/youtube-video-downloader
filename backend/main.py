@@ -1,25 +1,30 @@
-from fastapi import FastAPI, WebSocket, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from yt_dlp import YoutubeDL
-import uuid
 import os
-import asyncio
+import uuid
+import threading
+import time
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# ---------- CORS ----------
+# ----------------------
+# CORS
+# ----------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # replace "*" with your frontend URL in production
+    allow_origins=["*"],  # Allow all origins for dev
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# ---------- Request Models ----------
+# ----------------------
+# Models
+# ----------------------
 class VideoRequest(BaseModel):
     url: str
 
@@ -29,7 +34,24 @@ class DownloadRequest(BaseModel):
     format_id: str
 
 
-# ---------- Info Endpoint ----------
+# ----------------------
+# Auto-delete downloaded file after 10 minutes
+# ----------------------
+def delete_file_after_delay(filepath: str, delay: int = 600):
+    def delete_task():
+        time.sleep(delay)
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except:
+                pass
+
+    threading.Thread(target=delete_task, daemon=True).start()
+
+
+# ----------------------
+# INFO ENDPOINT
+# ----------------------
 @app.post("/info")
 async def get_video_info(data: VideoRequest):
     url = data.url
@@ -37,76 +59,73 @@ async def get_video_info(data: VideoRequest):
     ydl_opts = {
         "quiet": True,
         "skip_download": True,
+        "extractor_args": {
+            "youtube": {"player_client": "web", "language": "en"}
+        },  # Force English
+        "noplaylist": True,
     }
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        return {
-            "title": info.get("title"),
-            "thumbnail": info.get("thumbnail"),
-            "duration": info.get("duration"),
-            "uploader": info.get("uploader"),
-            "description": info.get("description"),
-            "formats": [
-                {
-                    "format_id": f.get("format_id"),
-                    "ext": f.get("ext"),
-                    "resolution": f.get("resolution"),
-                    "filesize": f.get("filesize"),
-                    "format_note": f.get("format_note"),
-                }
-                for f in info.get("formats", [])
-                if f.get("format_id")
-            ],
-        }
+        # Extract usable formats safely
+        formats = [
+            {
+                "format_id": f.get("format_id"),
+                "ext": f.get("ext"),
+                "resolution": f.get("resolution") or f.get("format_note") or "N/A",
+                "filesize": f.get("filesize"),
+                "format_note": f.get("format_note"),
+            }
+            for f in info.get("formats", [])
+            if f.get("format_id") and f.get("url")
+        ]
+
+        return JSONResponse(
+            {
+                "title": info.get("title"),
+                "thumbnail": info.get("thumbnail"),
+                "duration": info.get("duration"),
+                "uploader": info.get("uploader"),
+                "description": info.get("description"),
+                "formats": formats,
+            }
+        )
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ---------- WebSocket Download Endpoint ----------
-@app.websocket("/ws/download")
-async def websocket_download(websocket: WebSocket):
-    await websocket.accept()
+# ----------------------
+# DOWNLOAD ENDPOINT
+# ----------------------
+@app.post("/download")
+async def download_video(req: DownloadRequest, background_tasks: BackgroundTasks):
+    url = req.url
+    format_id = req.format_id
+
+    # Ensure downloads folder exists
+    os.makedirs("downloads", exist_ok=True)
+    output_filename = f"downloads/{uuid.uuid4()}.mp4"
+
+    ydl_opts = {
+        "outtmpl": output_filename,
+        "format": format_id,  # Use selected format_id from frontend
+        "merge_output_format": "mp4",
+        "quiet": True,
+    }
+
     try:
-        data = await websocket.receive_json()
-        url = data.get("url")
-        format_id = data.get("format_id")
-
-        if not url or not format_id:
-            await websocket.send_json({"error": "url and format_id are required"})
-            await websocket.close()
-            return
-
-        # Ensure downloads folder exists
-        os.makedirs("downloads", exist_ok=True)
-        output_file = f"downloads/{uuid.uuid4()}.mp4"
-
-        # Progress hook for yt-dlp
-        def progress_hook(d):
-            if d["status"] == "downloading":
-                percent = d.get("_percent_str", "0.0%")
-                asyncio.create_task(websocket.send_json({"progress": percent}))
-            elif d["status"] == "finished":
-                asyncio.create_task(
-                    websocket.send_json({"progress": "100%", "finished": True})
-                )
-
-        ydl_opts = {
-            "format": format_id,
-            "outtmpl": output_file,
-            "merge_output_format": "mp4",
-            "progress_hooks": [progress_hook],
-        }
-
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
-        await websocket.send_json({"file": output_file})
-        await websocket.close()
+        # Schedule auto-delete after 10 minutes
+        background_tasks.add_task(delete_file_after_delay, output_filename)
+
+        return FileResponse(
+            output_filename, filename="video.mp4", media_type="video/mp4"
+        )
 
     except Exception as e:
-        await websocket.send_json({"error": str(e)})
-        await websocket.close()
+        raise HTTPException(status_code=400, detail=str(e))
