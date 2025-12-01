@@ -1,6 +1,6 @@
 # YouTube Downloader – Next.js + FastAPI
 
-![YouTube Downloader Banner]("./screenshot.png")
+![YouTube Downloader Banner](./screenshot.png)
 
 A fast, secure, and modern YouTube downloader built with **Next.js (App Router)** for the frontend and **FastAPI** for the backend.
 Supports:
