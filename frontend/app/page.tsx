@@ -18,12 +18,21 @@ interface VideoInfo {
     uploader?: string;
     description?: string;
     formats: VideoFormat[];
+    // Optional subtitle metadata returned by the backend
+    subtitle_languages?: string[];
+    subtitles?: Record<string, any>;
+    automatic_captions?: Record<string, any>;
 }
 
 export default function Home() {
     const [url, setUrl] = useState("");
     const [info, setInfo] = useState<VideoInfo | null>(null);
     const [selectedFormat, setSelectedFormat] = useState("");
+    // Subtitle selection & available languages
+    const [selectedSubtitleLang, setSelectedSubtitleLang] = useState<
+        string | null
+    >(null);
+    const [subtitleLanguages, setSubtitleLanguages] = useState<string[]>([]);
     const [status, setStatus] = useState("");
     const [loadingInfo, setLoadingInfo] = useState(false);
     const [downloading, setDownloading] = useState(false);
@@ -48,6 +57,7 @@ export default function Home() {
             });
 
             const data = await res.json();
+            console.log(data);
 
             if (data.error) {
                 setStatus(`❌ ${data.error}`);
@@ -55,10 +65,77 @@ export default function Home() {
                 return;
             }
 
-            setInfo(data);
+            // Deduplicate formats client-side and prefer formats that include audio.
+            // We dedupe by ext + resolution and keep the entry that either has audio (preferred)
+            // or the larger filesize as a fallback.
+            const rawFormats = Array.isArray(data.formats) ? data.formats : [];
+            const seen = new Map<string, any>();
+            const deduped: any[] = [];
+            for (const f of rawFormats) {
+                const key = `${f.ext}|${f.resolution || f.format_note || "N/A"}`;
+                if (!seen.has(key)) {
+                    seen.set(key, f);
+                    deduped.push(f);
+                } else {
+                    const existing = seen.get(key);
+                    const existingSize = existing?.filesize || 0;
+                    const newSize = f?.filesize || 0;
+                    // prefer the one with audio; otherwise prefer larger filesize
+                    const preferNew =
+                        (!!f.has_audio && !existing?.has_audio) ||
+                        (newSize > existingSize &&
+                            (!!f.has_audio || !existing?.has_audio));
+                    if (preferNew) {
+                        seen.set(key, f);
+                        const idx = deduped.findIndex(
+                            (x) =>
+                                x.ext === existing.ext &&
+                                (x.resolution || x.format_note || "N/A") ===
+                                    (existing.resolution ||
+                                        existing.format_note ||
+                                        "N/A"),
+                        );
+                        if (idx !== -1) deduped[idx] = f;
+                    }
+                }
+            }
+            data.formats = deduped;
+
+            // Pick a sensible default selected format:
+            // 1) prefer mp4 that has audio
+            // 2) otherwise any format that has audio
+            // 3) otherwise the first available format
+            let defaultFormat = "";
+            if (Array.isArray(data.formats) && data.formats.length > 0) {
+                const mp4WithAudio = data.formats.find(
+                    (x: any) => x.ext === "mp4" && x.has_audio,
+                );
+                const anyWithAudio = data.formats.find((x: any) => x.has_audio);
+                defaultFormat =
+                    (mp4WithAudio && mp4WithAudio.format_id) ||
+                    (anyWithAudio && anyWithAudio.format_id) ||
+                    data.formats[0].format_id;
+            }
+
+            setInfo({ ...(data as any), formats: data.formats });
             setStatus("Video info loaded!");
-            if (data.formats && data.formats.length > 0) {
-                setSelectedFormat(data.formats[0].format_id);
+            if (defaultFormat) setSelectedFormat(defaultFormat);
+
+            // Populate subtitle language choices if provided by backend
+            if (
+                Array.isArray(data.subtitle_languages) &&
+                data.subtitle_languages.length > 0
+            ) {
+                setSubtitleLanguages(data.subtitle_languages);
+                // Prefer English when available
+                setSelectedSubtitleLang(
+                    data.subtitle_languages.includes("en")
+                        ? "en"
+                        : data.subtitle_languages[0],
+                );
+            } else {
+                setSubtitleLanguages([]);
+                setSelectedSubtitleLang(null);
             }
         } catch (error) {
             setStatus(`❌ Failed to fetch video info., ${error}`);
@@ -83,7 +160,11 @@ export default function Home() {
             const res = await fetch(`${BACKEND}/download`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ url, format_id: selectedFormat }),
+                body: JSON.stringify({
+                    url,
+                    format_id: selectedFormat,
+                    subtitle_lang: selectedSubtitleLang,
+                }),
             });
 
             if (!res.ok) {
@@ -109,8 +190,8 @@ export default function Home() {
     };
 
     return (
-        <div className="min-h-screen flex flex-col items-center p-6 bg-gradient-to-br from-gray-900 via-black to-gray-800 text-white">
-            <h1 className="text-4xl font-extrabold mb-6 text-center bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-pink-500">
+        <div className="min-h-screen flex flex-col items-center p-6 bg-linear-to-br from-gray-900 via-black to-gray-800 text-white">
+            <h1 className="text-4xl font-extrabold mb-6 text-center bg-clip-text text-transparent bg-linear-to-br from-purple-500 to-pink-500">
                 Premium YouTube Downloader
             </h1>
 
@@ -126,7 +207,7 @@ export default function Home() {
                 <button
                     onClick={fetchInfo}
                     disabled={loadingInfo || !url}
-                    className="w-full mt-4 p-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 rounded-xl text-lg font-semibold transition disabled:opacity-50"
+                    className="w-full mt-4 p-4 bg-linear-to-r from-blue-600 to-purple-600 hover:opacity-90 rounded-xl text-lg font-semibold transition disabled:opacity-50"
                 >
                     {loadingInfo ? "Fetching Info…" : "Get Video Info"}
                 </button>
@@ -137,6 +218,8 @@ export default function Home() {
                 <div className="mt-8 w-full max-w-xl bg-gray-800/60 p-6 rounded-2xl border border-gray-700 shadow-xl">
                     <Image
                         src={info.thumbnail}
+                        width={300}
+                        height={300}
                         alt="thumbnail"
                         className="rounded-xl mb-4 w-full shadow-lg"
                     />
@@ -168,13 +251,38 @@ export default function Home() {
                                     </option>
                                 ))}
                             </select>
+
+                            {/* Subtitle language selection (if available) */}
+                            {subtitleLanguages.length > 0 && (
+                                <div className="mt-4">
+                                    <label className="text-gray-300 font-medium">
+                                        Subtitle Language
+                                    </label>
+                                    <select
+                                        value={selectedSubtitleLang || ""}
+                                        onChange={(e) =>
+                                            setSelectedSubtitleLang(
+                                                e.target.value || null,
+                                            )
+                                        }
+                                        className="w-full mt-2 p-3 bg-gray-900 border border-gray-700 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                                    >
+                                        <option value="">(none)</option>
+                                        {subtitleLanguages.map((lang) => (
+                                            <option key={lang} value={lang}>
+                                                {lang}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
                         </div>
                     )}
 
                     <button
                         onClick={downloadVideo}
                         disabled={downloading}
-                        className="w-full mt-6 p-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:opacity-90 rounded-xl text-lg font-semibold transition disabled:opacity-50"
+                        className="w-full mt-6 p-4 bg-linear-to-r from-green-600 to-emerald-600 hover:opacity-90 rounded-xl text-lg font-semibold transition disabled:opacity-50"
                     >
                         {downloading ? "Downloading…" : "Download Video"}
                     </button>
