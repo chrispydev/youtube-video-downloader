@@ -17,6 +17,7 @@ interface VideoInfo {
     duration: number;
     uploader?: string;
     description?: string;
+    size?: string;
     formats: VideoFormat[];
     // Optional subtitle metadata returned by the backend
     subtitle_languages?: string[];
@@ -247,7 +248,8 @@ export default function Home() {
                                         key={f.format_id}
                                         value={f.format_id}
                                     >
-                                        {f.resolution} ({f.ext})
+                                        {f.resolution} ({f.ext}) size:{" "}
+                                        {f.filesize}
                                     </option>
                                 ))}
                             </select>

@@ -1,3 +1,4 @@
+
 import os
 import threading
 import time
@@ -98,8 +99,7 @@ async def get_video_info(data: VideoRequest):
                 "format_id": fv.get("format_id"),
                 "ext": fv.get("ext"),
                 "resolution": fv.get("resolution") or fv.get("format_note") or "N/A",
-                # Prefer exact filesize when available, otherwise use filesize_approx
-                "filesize": fv.get("filesize") or fv.get("filesize_approx"),
+                "filesize": fv.get("filesize"),
                 "format_note": fv.get("format_note"),
                 "has_audio": True
                 if fv.get("acodec") and fv.get("acodec") != "none"
@@ -114,20 +114,6 @@ async def get_video_info(data: VideoRequest):
         # Sort formats to provide a consistent ordering for the frontend.
         # This sorts primarily by resolution label (string) and then by extension.
         formats.sort(key=lambda x: (x.get("resolution") or "", x.get("ext") or ""))
-
-        # Determine a sensible top-level filesize:
-        # prefer `info.filesize` if present, otherwise take the largest filesize
-        # from the available formats (filesize or filesize_approx).
-        top_size = info.get("filesize")
-        if not top_size:
-            try:
-                max_size = max(
-                    (fv.get("filesize") or fv.get("filesize_approx") or 0)
-                    for fv in fmt_map.values()
-                )
-                top_size = max_size if max_size > 0 else None
-            except Exception:
-                top_size = None
 
         # Gather subtitle language info so the frontend can present language options.
         subs = info.get("subtitles") or {}
@@ -145,8 +131,6 @@ async def get_video_info(data: VideoRequest):
                 "uploader": info.get("uploader"),
                 "description": info.get("description"),
                 "formats": formats,
-                # Top-level size: either reported by the extractor or inferred from formats
-                "size": top_size,
                 # Provide available subtitle languages and raw subtitle info for frontend use
                 "subtitle_languages": subtitle_languages,
                 "subtitles": subs,
