@@ -55,7 +55,7 @@ def delete_file_after_error(filepath: str):
 # ----------------------
 # Auto-delete downloaded file after download
 # ----------------------
-def delete_file_after_delay(filepath: str, delay: int = 60):
+def delete_file_after_delay(filepath: str, delay: int = 30):
     def delete_task():
         time.sleep(delay)
         if os.path.exists(filepath):
