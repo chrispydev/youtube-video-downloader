@@ -38,7 +38,8 @@ export default function Home() {
     const [loadingInfo, setLoadingInfo] = useState(false);
     const [downloading, setDownloading] = useState(false);
 
-    const BACKEND = "http://localhost:8000";
+    // const BACKEND = "http://localhost:8000";
+    const BACKEND = "youtube-video-downloader-rust.vercel.app";
 
     // ---------------------------
     // Fetch video info

@@ -38,11 +38,26 @@ class DownloadRequest(BaseModel):
 
 
 # ----------------------
+# Auto-delete downloaded file after error
+# ----------------------
+def delete_file_after_error(filepath: str):
+    def delete_task():
+        time.sleep(5)
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except:
+                pass
+
+    threading.Thread(target=delete_task, daemon=True).start()
+
+
+# ----------------------
 # Auto-delete downloaded file after download
 # ----------------------
-def delete_file_after_delay(filepath: str, delay: int = 600):
+def delete_file_after_delay(filepath: str, delay: int = 60):
     def delete_task():
-        # time.sleep(delay)
+        time.sleep(delay)
         if os.path.exists(filepath):
             try:
                 os.remove(filepath)
@@ -220,4 +235,6 @@ async def download_video(req: DownloadRequest, background_tasks: BackgroundTasks
         )
 
     except Exception as e:
+        # Schedule auto-delete after 10 minutes
+        background_tasks.add_task(delete_file_after_error, output_filename)
         raise HTTPException(status_code=400, detail=str(e))
