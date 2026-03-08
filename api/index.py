@@ -105,7 +105,7 @@ async def get_video_info(data: VideoRequest):
             }
         },
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",  # Match your browser's UA
-        "sleep_interval": 3,  # Pause between requests
+        "sleep_interval": 10,  # Pause between requests
         "max_sleep_interval": 8,
         "noplaylist": True,
         "writesubtitles": True,
