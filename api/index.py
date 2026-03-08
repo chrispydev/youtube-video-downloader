@@ -548,3 +548,8 @@ def read_root():
     </body>
     </html>
     """
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
