@@ -38,8 +38,8 @@ export default function Home() {
   const [loadingInfo, setLoadingInfo] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  const BACKEND = "https://youtube-video-downloader-bfgo.onrender.com";
-  // const BACKEND = "http://127.0.0.1:8000";
+  // const BACKEND = "https://youtube-video-downloader-bfgo.onrender.com";
+  const BACKEND = "http://127.0.0.1:8000";
 
   // ---------------------------
   // Fetch video info
