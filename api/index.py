@@ -97,7 +97,16 @@ async def get_video_info(data: VideoRequest):
     ydl_opts = {
         "quiet": True,
         "skip_download": True,
-        "extractor_args": {"youtube": {"player_client": "web", "language": "en"}},
+        # "extractor_args": {"youtube": {"player_client": "web", "language": "en"}},
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"],  # Try android first
+                "lang": "en",
+            }
+        },
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",  # Match your browser's UA
+        "sleep_interval": 3,  # Pause between requests
+        "max_sleep_interval": 8,
         "noplaylist": True,
         "writesubtitles": True,
         "writeautomaticsub": True,
