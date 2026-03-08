@@ -45,6 +45,7 @@ def get_cookie_file():
     cookies_content = None
     cookies_base64 = os.getenv("YOUTUBE_COOKIES_BASE64")
     if cookies_base64:
+        print("Yes - found YOUTUBE_COOKIES_BASE64 env var, attempting to load cookies")
         try:
             decoded = base64.b64decode(cookies_base64).decode("utf-8")
             cookies_content = StringIO(decoded)
