@@ -2,7 +2,8 @@ import os
 import threading
 import time
 import uuid
-
+import base64
+from io import StringIO
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
@@ -38,7 +39,25 @@ class DownloadRequest(BaseModel):
 
 
 # ----------------------
-# Auto-delete downloaded file after error
+# Cookie loading helper (loaded once, reused)
+# ----------------------
+def get_cookie_file():
+    cookies_content = None
+    cookies_base64 = os.getenv("YOUTUBE_COOKIES_BASE64")
+    if cookies_base64:
+        try:
+            decoded = base64.b64decode(cookies_base64).decode("utf-8")
+            cookies_content = StringIO(decoded)
+            print("Cookies loaded successfully from environment variable")
+        except Exception as e:
+            print(f"Failed to decode cookies from env var: {e}")
+    else:
+        print("No YOUTUBE_COOKIES_BASE64 env var found - running without cookies")
+    return cookies_content
+
+
+# ----------------------
+# Auto-delete helpers (unchanged)
 # ----------------------
 def delete_file_after_error(filepath: str):
     def delete_task():
@@ -52,9 +71,6 @@ def delete_file_after_error(filepath: str):
     threading.Thread(target=delete_task, daemon=True).start()
 
 
-# ----------------------
-# Auto-delete downloaded file after download
-# ----------------------
 def delete_file_after_delay(filepath: str, delay: int = 30):
     def delete_task():
         time.sleep(delay)
@@ -74,26 +90,29 @@ def delete_file_after_delay(filepath: str, delay: int = 30):
 async def get_video_info(data: VideoRequest):
     url = data.url
 
+    # Get cookies once
+    cookies_content = get_cookie_file()
+
     ydl_opts = {
         "quiet": True,
         "skip_download": True,
-        "extractor_args": {
-            "youtube": {"player_client": "web", "language": "en"}
-        },  # Force English for extractor pages
+        "extractor_args": {"youtube": {"player_client": "web", "language": "en"}},
         "noplaylist": True,
-        # Request English subtitles metadata so frontend can show availability
         "writesubtitles": True,
         "writeautomaticsub": True,
         "subtitleslangs": ["en"],
         "subtitlesformat": "srt",
     }
 
+    # Apply cookies if available
+    if cookies_content:
+        ydl_opts["cookiefile"] = cookies_content
+
     try:
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        # Extract usable formats safely and deduplicate similar entries (e.g. multiple entries
-        # for the same resolution+ext). We keep the entry with the largest filesize when possible.
+        # Your existing format processing code (unchanged)
         raw_formats = [
             f for f in info.get("formats", []) if f.get("format_id") and f.get("url")
         ]
@@ -104,7 +123,6 @@ async def get_video_info(data: VideoRequest):
             if not existing:
                 fmt_map[key] = f
             else:
-                # Prefer the one with larger filesize (if filesize present)
                 if (f.get("filesize") or 0) > (existing.get("filesize") or 0):
                     fmt_map[key] = f
 
@@ -113,7 +131,6 @@ async def get_video_info(data: VideoRequest):
                 "format_id": fv.get("format_id"),
                 "ext": fv.get("ext"),
                 "resolution": fv.get("resolution") or fv.get("format_note") or "N/A",
-                # Prefer exact filesize when available, otherwise use filesize_approx
                 "filesize": fv.get("filesize") or fv.get("filesize_approx"),
                 "format_note": fv.get("format_note"),
                 "has_audio": True
@@ -126,13 +143,8 @@ async def get_video_info(data: VideoRequest):
             for fv in fmt_map.values()
         ]
 
-        # Sort formats to provide a consistent ordering for the frontend.
-        # This sorts primarily by resolution label (string) and then by extension.
         formats.sort(key=lambda x: (x.get("resolution") or "", x.get("ext") or ""))
 
-        # Determine a sensible top-level filesize:
-        # prefer `info.filesize` if present, otherwise take the largest filesize
-        # from the available formats (filesize or filesize_approx).
         top_size = info.get("filesize")
         if not top_size:
             try:
@@ -144,12 +156,9 @@ async def get_video_info(data: VideoRequest):
             except Exception:
                 top_size = None
 
-        # Gather subtitle language info so the frontend can present language options.
         subs = info.get("subtitles") or {}
         auto_caps = info.get("automatic_captions") or {}
-        subtitle_langs = set()
-        subtitle_langs.update(subs.keys())
-        subtitle_langs.update(auto_caps.keys())
+        subtitle_langs = set(subs.keys()) | set(auto_caps.keys())
         subtitle_languages = sorted(list(subtitle_langs))
 
         return JSONResponse(
@@ -160,15 +169,12 @@ async def get_video_info(data: VideoRequest):
                 "uploader": info.get("uploader"),
                 "description": info.get("description"),
                 "formats": formats,
-                # Top-level size: either reported by the extractor or inferred from formats
                 "size": top_size,
-                # Provide available subtitle languages and raw subtitle info for frontend use
                 "subtitle_languages": subtitle_languages,
                 "subtitles": subs,
                 "automatic_captions": auto_caps,
             }
         )
-
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -181,16 +187,18 @@ async def download_video(req: DownloadRequest, background_tasks: BackgroundTasks
     url = req.url
     format_id = req.format_id
 
+    # Get cookies once
+    cookies_content = get_cookie_file()
+
     # Ensure downloads folder exists
     os.makedirs("downloads", exist_ok=True)
     output_filename = f"downloads/{uuid.uuid4()}.mp4"
 
     ydl_opts = {
         "outtmpl": output_filename,
-        "format": format_id,  # Use selected format_id from frontend (may be adjusted below)
+        "format": format_id,
         "merge_output_format": "mp4",
         "quiet": True,
-        # Subtitle handling - use requested subtitle_lang if provided
         "writesubtitles": True if getattr(req, "subtitle_lang", None) else False,
         "writeautomaticsub": True,
         "subtitleslangs": [req.subtitle_lang]
@@ -202,8 +210,11 @@ async def download_video(req: DownloadRequest, background_tasks: BackgroundTasks
         "prefer_ffmpeg": True,
     }
 
-    # Inspect the video's formats to see if the selected format has audio.
-    # If the selected format is video-only, ask yt-dlp to merge it with the best audio stream.
+    # Apply cookies if available
+    if cookies_content:
+        ydl_opts["cookiefile"] = cookies_content
+
+    # Inspect formats for audio check (unchanged)
     try:
         with YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
             info_check = ydl.extract_info(url, download=False)
@@ -216,26 +227,19 @@ async def download_video(req: DownloadRequest, background_tasks: BackgroundTasks
         if selected_fmt:
             acodec = selected_fmt.get("acodec")
             has_audio_flag = acodec is not None and acodec != "none"
-        # If format lacks audio, request merging with best audio
         if not has_audio_flag:
             ydl_opts["format"] = f"{format_id}+bestaudio/best"
     except Exception:
-        # If we couldn't inspect formats, fall back to the provided format id
         pass
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-
-        # Schedule auto-delete after 10 minutes
         background_tasks.add_task(delete_file_after_delay, output_filename)
-
         return FileResponse(
             output_filename, filename="video.mp4", media_type="video/mp4"
         )
-
     except Exception as e:
-        # Schedule auto-delete after 10 minutes
         background_tasks.add_task(delete_file_after_error, output_filename)
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -1,0 +1,17 @@
+# Netscape HTTP Cookie File
+# https://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file! Do not edit.
+
+.youtube.com	TRUE	/	TRUE	1800563117	__Secure-3PSID	g.a0004gidS08oNpaasVyTMQ7m1aAXvpdk-PQCucwHD_J5xHy-npVCJ4xnTS3zMzeaUQFZQ2EVVgACgYKAeASARESFQHGX2MiOGPyUBwN6PwwClMy9ZFVThoVAUF8yKqUlA5Cjza2TGQ9HfO1g0tC0076
+.youtube.com	TRUE	/	TRUE	1800563117	__Secure-3PAPISID	s5WxIr41ZWm1goCn/AJ42sWkpJS1kb95tk
+.youtube.com	TRUE	/	TRUE	1800563130	LOGIN_INFO	AFmmF2swRgIhAJZaYlrMs0Aw8u7odmKvyMBbjr4myUZ9uSla1yg2kL2XAiEAiQmOpIn7o1onk-mn5zmWbp7xA0uBotQPYMwCtrcLprU:QUQ3MjNmeExXN092U2xzSlVqRldxX0lsemlCSkE0bVdVOEVIQlducHJBaHlwTGJsYXhuWlQ0WDFZb0VTVDRCRTE0NTlVTXNaaHQ3WC1ITXctckZHNW5Gci1OaFZ3WnNuYXIwdDUxV25hU2Vadi1TOEF6NVJ0MS1XVGUzUkVXQkFZSFpJdjBkWkRJaElVc29kNFE4dGtnRG1QeTNENHdRU3JB
+.youtube.com	TRUE	/	TRUE	1807541046	PREF	f4=4000000&tz=Atlantic.Reykjavik&f5=30000&f7=100&f6=40000000
+www.youtube.com	FALSE	/	FALSE	1773067015	funnelData	{"loupe":{"percent":98,"isPanelShown":false},"cursor":{"percent":69,"isPanelShown":false},"blurb":{"percent":7,"isPanelShown":false},"darkmood":{"percent":43,"isPanelShown":false}}
+.youtube.com	TRUE	/	TRUE	1804516619	__Secure-1PSIDTS	sidts-CjIBBj1CYgX7BQd9WCvHx_zlIUkaSUjuPLafKAgXWP9MRQty8_SJZbn1e_ZvswSb_VfupBAA
+.youtube.com	TRUE	/	TRUE	1804516619	__Secure-3PSIDTS	sidts-CjIBBj1CYgX7BQd9WCvHx_zlIUkaSUjuPLafKAgXWP9MRQty8_SJZbn1e_ZvswSb_VfupBAA
+.youtube.com	TRUE	/	TRUE	1804517050	__Secure-3PSIDCC	AKEyXzXyu2xQTotJdrdh3v3olNXIjWlfYOjW_phHSwlFBleF8dUYstRIAynVcfjypJb0w8-8jQ
+.youtube.com	TRUE	/	TRUE	1788533040	VISITOR_INFO1_LIVE	HmfIYpLyAkw
+.youtube.com	TRUE	/	TRUE	1788533040	VISITOR_PRIVACY_METADATA	CgJHSBIEGgAgKg%3D%3D
+.youtube.com	TRUE	/	TRUE	1788532609	__Secure-YNID	16.YT=2xN0zBeBLwVJt2xYuPWGDr8Z_fynSkjlzZI5bUSfiBVv_vEyHbXYwqUjCcbnC9COXpJvD5kSAedxL4d5FO5Az47aqefExI2J_kv8nrfPKkosn1wwhFNhhtMz60jJjLiY5TSUNtUjGfKlD1gJwN1SdnepUVCTG34-znYpe40pXkBkUrWeLs0d0DxelRqVErGuEMb40I03Q_gsP2yIQVbP4TxRD1N0mh2fowK4CkaoV5lXhViUcq7aqeYJ5P3_q0qegs7VRlIyzBepv0DX0MMwpePNhfVxWFnuoGJXqFQIoCa9n4qH8ZUSYDd8cwlv6U2kKbutKw_M_pRDJqzEEEWG8g
+.youtube.com	TRUE	/	TRUE	0	YSC	EupB30bPXHc
+.youtube.com	TRUE	/	TRUE	1788532609	__Secure-ROLLOUT_TOKEN	CNHktqzf1LeRLhCnqar11f6OAxjey_-6w5CTAw%3D%3D
